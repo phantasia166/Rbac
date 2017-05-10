@@ -24,17 +24,20 @@ namespace Rbac
         where TUserGroup : class, IUserGroup<TRbacUser, TRbacRole, TRbacPermission>
         where TRoleGroup : class, IRoleGroup<TRbacRole, TRbacPermission>
     {
-        /// <summary>
-        /// 线程级静态变量，用于保存不同用户登录系统实例线程所对应的RBAC用户对象
-        /// </summary>
-        [ThreadStatic]
-        private static TRbacUser _user;
         private static RbacUserProvider<TRbacUser, TRbacRole, TRbacPermission> _userProvider;
+        public static bool HasUserProvider { get { return _userProvider != null; } }
 
         public static RbacUserGroupProvider<TUserGroup, TRbacUser, TRbacRole, TRbacPermission> UserGroupProvider { get; private set; }
+        public static bool HasUserGroupProvider { get { return UserGroupProvider != null; } }
+
         public static RbacRoleProvider<TRbacRole, TRbacPermission> RoleProvider { get; private set; }
+        public static bool HasRoleProvider { get { return RoleProvider != null; } }
+
         public static RbacRoleGroupProvider<TRoleGroup, TRbacRole, TRbacPermission> RoleGroupProvider { get; private set; }
+        public static bool HasRoleGroupProvider { get { return RoleGroupProvider != null; } }
+
         public static RbacPermissionProvider<TRbacPermission> PermissionProvider { get; private set; }
+        public static bool HasPermissionProvider { get { return PermissionProvider != null; } }
 
         public static void RegisterUserProvider(RbacUserProvider<TRbacUser, TRbacRole, TRbacPermission> provider)
         {
@@ -64,34 +67,19 @@ namespace Rbac
         public static TRbacUser GetUser(string username)
         {
             if (_userProvider == null) return null;
-            if (_user == null)
+
+            var user = _userProvider.GetUser(username);
+            if (user == null) throw new Exception("Can not get a RBAC user from the provider!");
+
+            if (HasRoleProvider) user.Roles = RoleProvider.GetUserRoles(username);
+            if (HasPermissionProvider && user.Roles != null)
             {
-                _user = _userProvider.GetUser(username);
-                if (_user == null) throw new Exception("Can not get a RBAC user from the provider!");
-            }
-            if (RoleProvider != null) _user.Roles = RoleProvider.GetUserRoles(username);
-            if (PermissionProvider != null && _user.Roles != null)
-            {
-                var permissions = PermissionProvider.GetRolePermissions(_user.Roles.Select(p => p.Name).ToList());
+                var permissions = PermissionProvider.GetRolePermissions(user.Roles.Select(p => p.Name).ToList());
                 var userPermissions = PermissionProvider.GetUserPermissions(username);
-                _user.Permissions = permissions.Concat(userPermissions).Distinct().ToList();
+                user.Permissions = permissions.Concat(userPermissions).Distinct().ToList();
             }
 
-            return _user;
-        }
-
-        public static TRbacUser RefreshUser()
-        {
-            if (_user == null || _userProvider == null) return null;
-
-            _user = _userProvider.GetUser(_user.UserName);
-
-            return _user;
-        }
-
-        public static void Clear()
-        {
-            _user = null;
+            return user;
         }
     }
 
@@ -102,11 +90,6 @@ namespace Rbac
     public static class RbacContext<TRbacUser>
         where TRbacUser : class, IRbacUser
     {
-        /// <summary>
-        /// 线程级静态变量，用于保存不同用户登录系统实例线程所对应的RBAC用户对象
-        /// </summary>
-        [ThreadStatic]
-        private static TRbacUser _user;
         private static RbacUserProvider<TRbacUser> _userProvider;
 
         private static RbacRoleProvider _defaultRoleProvider;
@@ -146,34 +129,19 @@ namespace Rbac
         public static TRbacUser GetUser(string username)
         {
             if (_userProvider == null) return null;
-            if (_user == null)
+
+            var user = _userProvider.GetUser(username);
+            if (user == null) throw new Exception("Can not get a RBAC user from the provider!");
+
+            if (HasRoleProvider) user.Roles = _defaultRoleProvider.GetUserRoles(username);
+            if (HasPermissionProvider && user.Roles != null)
             {
-                _user = _userProvider.GetUser(username);
-                if (_user == null) throw new Exception("Can not get a RBAC user from the provider!");
-            }
-            if (HasRoleProvider) _user.Roles = _defaultRoleProvider.GetUserRoles(username);
-            if (HasPermissionProvider && _user.Roles != null)
-            {
-                var permissions = _defaultPermissionProvider.GetRolePermissions(_user.Roles);
+                var permissions = _defaultPermissionProvider.GetRolePermissions(user.Roles);
                 var userPermissions = _defaultPermissionProvider.GetUserPermissions(username);
-                _user.Permissions = permissions.Concat(userPermissions).Distinct().ToList();
+                user.Permissions = permissions.Concat(userPermissions).Distinct().ToList();
             }
 
-            return _user;
-        }
-
-        public static TRbacUser RefreshUser()
-        {
-            if (_user == null || _userProvider == null) return null;
-
-            _user = _userProvider.GetUser(_user.UserName);
-
-            return _user;
-        }
-
-        public static void Clear()
-        {
-            _user = null;
+            return user;
         }
     }
 }
